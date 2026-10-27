@@ -1,0 +1,153 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --c-primary: #174a3b;
+  --c-primary-light: #1f5a47;
+  --c-primary-dark: #103a2d;
+  --c-primary-soft: #e7f1ec;
+  --c-secondary: #276b53;
+  --c-accent: #e5563f;
+  --c-accent-light: #ed7560;
+  --c-accent-soft: #fde9e4;
+  --c-on-primary: #ffffff;
+  --c-on-accent: #ffffff;
+  --c-success: #2e7d52;
+  --c-success-soft: #e3f1e7;
+  --c-warn: #b58b48;
+  --c-warn-soft: #f7ebce;
+  --c-danger: #c74a3d;
+  --c-danger-soft: #fae1dc;
+  --c-cream: #f7f1e8;
+  --c-paper: #fffdf8;
+  --c-line: #e2d8c9;
+  --c-ink: #19372e;
+  --c-muted: #718078;
+  --shadow-sm: 0 1px 3px rgba(35, 55, 43, 0.06);
+  --shadow: 0 8px 28px rgba(35, 55, 43, 0.08);
+  --shadow-lg: 0 20px 60px rgba(35, 55, 43, 0.12);
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--c-cream);
+  color: var(--c-ink);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  cursor: pointer;
+  transition: background-color 0.18s ease, color 0.18s ease,
+    border-color 0.18s ease, box-shadow 0.18s ease, transform 0.12s ease;
+}
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+button:not(:disabled):active {
+  transform: scale(0.97);
+}
+input,
+select {
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+/* Focus ring */
+input:focus,
+select:focus {
+  outline: none;
+  border-color: var(--c-primary);
+  box-shadow: 0 0 0 3px var(--c-primary-soft);
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-18px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.94); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes pop {
+  0% { transform: scale(0.8); opacity: 0; }
+  60% { transform: scale(1.04); }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes pulseDot {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(108, 168, 94, 0.5); }
+  50% { box-shadow: 0 0 0 6px rgba(108, 168, 94, 0); }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.anim-fade { animation: fadeIn 0.3s ease both; }
+.anim-up { animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.anim-left { animation: slideInLeft 0.35s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.anim-scale { animation: scaleIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.anim-pop { animation: pop 0.35s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+.stagger > * { animation: slideUp 0.4s cubic-bezier(0.16,1,0.3,1) both; }
+.stagger > *:nth-child(1) { animation-delay: 0.04s; }
+.stagger > *:nth-child(2) { animation-delay: 0.08s; }
+.stagger > *:nth-child(3) { animation-delay: 0.12s; }
+.stagger > *:nth-child(4) { animation-delay: 0.16s; }
+.stagger > *:nth-child(5) { animation-delay: 0.20s; }
+.stagger > *:nth-child(6) { animation-delay: 0.24s; }
+
+/* Card hover lift */
+.lift {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.lift:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-lg);
+}
+
+/* Scrollbars */
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--c-line);
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--c-muted); }
+
+/* Receipt print */
+@media print {
+  @page { size: 80mm auto; margin: 0; }
+  body { background: #fff; }
+  body * { visibility: hidden !important; }
+  .print-receipt, .print-receipt * { visibility: visible !important; }
+  .print-receipt {
+    position: absolute;
+    inset: 0;
+    display: block;
+    background: #fff;
+    padding: 0;
+  }
+}
+
+/* Toast */
+.toast-enter { animation: slideUp 0.3s ease both; }
