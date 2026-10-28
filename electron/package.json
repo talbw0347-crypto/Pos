@@ -1,0 +1,52 @@
+{
+  "name": "zaki-market-pos",
+  "productName": "Zaki's Market POS",
+  "version": "1.0.0",
+  "description": "Offline point-of-sale and inventory system for Zaki's Market — runs on Windows desktop, no internet required.",
+  "author": "Zaki's Market",
+  "license": "UNLICENSED",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "dist": "electron-builder --win",
+    "dist:portable": "electron-builder --win portable",
+    "build": "npm run dist"
+  },
+  "build": {
+    "appId": "com.zakimarket.pos",
+    "productName": "Zaki's Market POS",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "app/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "artifactName": "ZakiMarket-POS-${version}-${arch}.${ext}",
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Zaki's Market POS"
+    },
+    "portable": {
+      "artifactName": "ZakiMarket-POS-${version}-portable.exe"
+    }
+  },
+  "devDependencies": {
+    "electron": "^32.0.0",
+    "electron-builder": "^25.0.0"
+  }
+}

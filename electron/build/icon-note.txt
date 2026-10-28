@@ -1,0 +1,6 @@
+Place a Windows icon file here named `icon.ico` (256×256 recommended).
+Until you add one, electron-builder will use a default Electron icon.
+
+You can generate an .ico from any square PNG using an online converter or:
+  pip install pillow
+  python -c "from PIL import Image; Image.open('logo.png').save('icon.ico', sizes=[(256,256)])"
