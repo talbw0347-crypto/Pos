@@ -25,6 +25,7 @@
       "app/**/*",
       "package.json"
     ],
+    "publish": null,
     "win": {
       "target": [
         { "target": "nsis", "arch": ["x64"] },
