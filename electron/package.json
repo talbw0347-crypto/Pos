@@ -9,7 +9,7 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
-    "dist": "electron-builder --win",
+    "dist": "electron-builder --win --publish never",
     "dist:portable": "electron-builder --win portable",
     "build": "npm run dist"
   },
