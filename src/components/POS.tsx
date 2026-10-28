@@ -1,7 +1,6 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Search,
-  Camera,
   X,
   Minus,
   Plus,
@@ -9,8 +8,7 @@ import {
   CreditCard,
   Banknote,
   UserPlus,
-  AlertTriangle,
-  RotateCcw,
+  ScanLine,
   CheckCircle2,
 } from 'lucide-react';
 import type {
@@ -21,8 +19,7 @@ import type {
   Product,
   Sale,
 } from '@/lib/types';
-import { money, uid, makeReceiptNo } from '@/lib/utils';
-import { useScanner } from '@/lib/useScanner';
+import { money, makeReceiptNo } from '@/lib/utils';
 
 interface Props {
   db: DB;
@@ -39,8 +36,9 @@ export default function POS({ db, role, onSale, onToast, onReceipt }: Props) {
   const [discount, setDiscount] = useState(0);
   const [payment, setPayment] = useState<PaymentMethod>('cash');
   const [customerId, setCustomerId] = useState('');
-  const [scannerOpen, setScannerOpen] = useState(false);
+  const [flash, setFlash] = useState(false);
   const searchRef = useRef<HTMLInputElement | null>(null);
+  const lastBeepRef = useRef<number>(0);
 
   const categories = useMemo(
     () => ['All', ...Array.from(new Set(db.products.map((p) => p.category)))],
@@ -64,9 +62,36 @@ export default function POS({ db, role, onSale, onToast, onReceipt }: Props) {
   const disc = role === 'admin' ? Math.min(Number(discount) || 0, subtotal) : 0;
   const total = Math.max(0, subtotal - disc);
 
+  const beep = (ok: boolean) => {
+    try {
+      const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!AC) return;
+      const ctx = new AC();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.value = ok ? 880 : 220;
+      gain.gain.setValueAtTime(0.12, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.18);
+      ctx.close();
+    } catch {
+      // audio unavailable — silent
+    }
+  };
+
+  const flashGreen = () => {
+    setFlash(true);
+    setTimeout(() => setFlash(false), 350);
+  };
+
   const addToCart = (p: Product) => {
     if (p.stock <= 0) {
       onToast('Product is out of stock', 'error');
+      beep(false);
       return;
     }
     setCart((prev) => {
@@ -74,6 +99,7 @@ export default function POS({ db, role, onSale, onToast, onReceipt }: Props) {
       if (found) {
         if (found.quantity >= p.stock) {
           onToast('No more stock available', 'error');
+          beep(false);
           return prev;
         }
         return prev.map((x) =>
@@ -82,6 +108,8 @@ export default function POS({ db, role, onSale, onToast, onReceipt }: Props) {
       }
       return [...prev, { ...p, quantity: 1 }];
     });
+    beep(true);
+    flashGreen();
   };
 
   const changeQty = (id: string, delta: number) => {
@@ -99,41 +127,62 @@ export default function POS({ db, role, onSale, onToast, onReceipt }: Props) {
     });
   };
 
+  // Hardware scanner support: a USB/Bluetooth scanner acts as a keyboard,
+  // typing the barcode fast and ending with Enter. We keep the search input
+  // auto-focused so the scanner's keystrokes land in it, then on Enter we
+  // look up the product. A short inter-keystroke window distinguishes a
+  // scanner burst from a human typing the same code manually.
   const handleScanEnter = (e: React.KeyboardEvent) => {
     if (e.key !== 'Enter') return;
     e.preventDefault();
-    const term = search.trim().toLowerCase();
+    const term = search.trim();
     if (!term) return;
+    const lc = term.toLowerCase();
     const exact = db.products.find(
-      (p) => p.barcode.toLowerCase() === term || p.id === term,
+      (p) => p.barcode.toLowerCase() === lc || p.id === lc,
     );
     if (exact) {
       addToCart(exact);
       setSearch('');
+      refocusSoon();
       return;
     }
     const matches = db.products.filter((p) =>
-      p.name.toLowerCase().includes(term),
+      p.name.toLowerCase().includes(lc),
     );
     if (matches.length === 1) {
       addToCart(matches[0]);
       setSearch('');
+      refocusSoon();
     } else {
-      onToast('No exact barcode match', 'info');
+      onToast(`Barcode ${term} not found`, 'error');
+      beep(false);
+      setSearch('');
+      refocusSoon();
     }
   };
 
-  const onBarcodeDetected = (code: string) => {
-    const exact = db.products.find(
-      (p) => p.barcode === code || p.barcode.toLowerCase() === code.toLowerCase(),
-    );
-    if (exact) {
-      addToCart(exact);
-      onToast(`Added: ${exact.name}`, 'success');
-    } else {
-      onToast(`Barcode ${code} not found`, 'error');
-    }
+  const refocusSoon = () => {
+    setTimeout(() => searchRef.current?.focus(), 0);
   };
+
+  // Keep the scan field focused whenever the POS tab is open and no other
+  // input/select is active. Reclaims focus after clicks elsewhere.
+  useEffect(() => {
+    searchRef.current?.focus();
+    const reclaim = () => {
+      const el = document.activeElement;
+      const tag = el?.tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      searchRef.current?.focus();
+    };
+    document.addEventListener('click', reclaim);
+    window.addEventListener('focus', reclaim);
+    return () => {
+      document.removeEventListener('click', reclaim);
+      window.removeEventListener('focus', reclaim);
+    };
+  }, []);
 
   const checkout = () => {
     if (!cart.length) return;
@@ -183,6 +232,7 @@ export default function POS({ db, role, onSale, onToast, onReceipt }: Props) {
     setPayment('cash');
     setCustomerId('');
     setSearch('');
+    refocusSoon();
   };
 
   return (
@@ -200,35 +250,32 @@ export default function POS({ db, role, onSale, onToast, onReceipt }: Props) {
               </p>
               <h2 className="text-[19px] tracking-tight font-bold mt-1">Scan or choose products</h2>
             </div>
-            <div className="flex gap-2 items-center">
-              <label
-                className="flex items-center gap-2 border border-[var(--c-line)] rounded-[9px] bg-[var(--c-paper)] px-3 py-2 w-[230px]"
+            <label
+              className="flex items-center gap-2 border rounded-[9px] bg-[var(--c-paper)] px-3 py-2 w-[260px] transition-colors"
+              style={{
+                borderColor: flash ? 'var(--c-success)' : 'var(--c-line)',
+                boxShadow: flash ? '0 0 0 3px var(--c-success-soft)' : 'none',
+              }}
+            >
+              <ScanLine size={16} style={{ color: flash ? 'var(--c-success)' : 'var(--c-muted)' }} />
+              <input
+                ref={searchRef}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={handleScanEnter}
+                placeholder="Scan barcode — ready"
+                className="bg-transparent w-full text-[13px] outline-none"
+                style={{ color: 'var(--c-ink)' }}
+                autoComplete="off"
+                inputMode="numeric"
+              />
+              <kbd
+                className="text-[9px] border border-[var(--c-line)] rounded px-1 py-0.5"
+                style={{ color: 'var(--c-muted)', background: 'var(--c-cream)' }}
               >
-                <Search size={14} style={{ color: 'var(--c-muted)' }} />
-                <input
-                  ref={searchRef}
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  onKeyDown={handleScanEnter}
-                  placeholder="Scan barcode or search"
-                  className="bg-transparent w-full text-[12px] outline-none"
-                  style={{ color: 'var(--c-ink)' }}
-                />
-                <kbd
-                  className="text-[9px] border border-[var(--c-line)] rounded px-1 py-0.5"
-                  style={{ color: 'var(--c-muted)', background: 'var(--c-cream)' }}
-                >
-                  Enter
-                </kbd>
-              </label>
-              <button
-                onClick={() => setScannerOpen(true)}
-                className="text-white rounded-[10px] px-4 py-2.5 flex items-center gap-2 text-[13px] font-extrabold anim-pop"
-                style={{ background: 'var(--c-accent)' }}
-              >
-                <Camera size={17} /> كاميرا فورية
-              </button>
-            </div>
+                Enter
+              </kbd>
+            </label>
           </div>
 
           <div className="flex gap-2 overflow-auto mb-4 pb-1">
@@ -376,6 +423,7 @@ export default function POS({ db, role, onSale, onToast, onReceipt }: Props) {
                     min={0}
                     value={discount || ''}
                     onChange={(e) => setDiscount(Number(e.target.value) || 0)}
+                    onFocus={(e) => e.target.select()}
                     className="w-[100px] text-right py-1.5 px-2 rounded-[8px] border border-[var(--c-line)] bg-[var(--c-paper)] text-[12px]"
                     style={{ color: 'var(--c-ink)' }}
                     placeholder="0"
@@ -434,173 +482,15 @@ export default function POS({ db, role, onSale, onToast, onReceipt }: Props) {
         </aside>
       </div>
 
-      {scannerOpen && (
-        <ScannerModal
-          onClose={() => setScannerOpen(false)}
-          onDetected={onBarcodeDetected}
-          onManual={(code) => {
-            onBarcodeDetected(code);
-          }}
-        />
+      {/* Scan success indicator — a small toast-like badge */}
+      {flash && (
+        <div
+          className="fixed top-4 left-1/2 -translate-x-1/2 z-[120] flex items-center gap-2 px-4 py-2 rounded-[10px] text-[12px] font-bold text-white anim-pop"
+          style={{ background: 'var(--c-success)' }}
+        >
+          <CheckCircle2 size={15} /> Added to basket
+        </div>
       )}
     </main>
-  );
-}
-
-function ScannerModal({
-  onClose,
-  onDetected,
-  onManual,
-}: {
-  onClose: () => void;
-  onDetected: (code: string) => void;
-  onManual: (code: string) => void;
-}) {
-  const [manual, setManual] = useState('');
-  const [flash, setFlash] = useState(false);
-  const lastCodeRef = useRef<string>('');
-  const lastTimeRef = useRef<number>(0);
-
-  const handleDetected = useCallback((code: string) => {
-    // Debounce: ignore duplicate reads within 1.5s
-    const now = Date.now();
-    if (code === lastCodeRef.current && now - lastTimeRef.current < 1500) return;
-    lastCodeRef.current = code;
-    lastTimeRef.current = now;
-    setFlash(true);
-    onDetected(code);
-    setTimeout(() => setFlash(false), 600);
-  }, [onDetected]);
-
-  const { videoRef, running, error, errorKind, restart } = useScanner({
-    active: true,
-    onDetected: handleDetected,
-  });
-
-  return (
-    <div
-      className="fixed inset-0 z-[110] grid place-items-center p-5 anim-fade"
-      style={{ background: 'rgba(23,74,59,0.6)' }}
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-[440px] bg-[var(--c-paper)] border border-[var(--c-line)] rounded-[16px] p-5 anim-scale"
-        style={{ boxShadow: 'var(--shadow-lg)' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-[16px] font-bold tracking-tight flex items-center gap-2">
-            <Camera size={18} style={{ color: 'var(--c-accent)' }} /> كاميرا فورية
-          </h3>
-          <button onClick={onClose} className="opacity-60 hover:opacity-100">
-            <X size={18} />
-          </button>
-        </div>
-
-        <div
-          className="relative rounded-[12px] overflow-hidden bg-black aspect-[4/3] mb-3"
-          style={{
-            border: flash ? '3px solid var(--c-success)' : '2px solid var(--c-line)',
-            transition: 'border-color 0.2s ease',
-          }}
-        >
-          <video
-            ref={videoRef}
-            playsInline
-            muted
-            autoPlay
-            className="w-full h-full object-cover"
-          />
-          {!running && !error && (
-            <div className="absolute inset-0 grid place-items-center text-white/80 text-[12px]">
-              <div className="flex flex-col items-center gap-2">
-                <div className="w-8 h-8 border-2 border-white/40 border-t-white rounded-full" style={{ animation: 'spin 0.8s linear infinite' }} />
-                Starting camera…
-              </div>
-            </div>
-          )}
-          {error && (
-            <div className="absolute inset-0 grid place-items-center text-white text-[12px] p-5 text-center">
-              <div className="flex flex-col items-center gap-3">
-                <AlertTriangle size={28} style={{ color: 'var(--c-accent)' }} />
-                <span className="leading-relaxed">{error}</span>
-                <button
-                  onClick={restart}
-                  className="text-white font-bold text-[12px] rounded-[8px] px-4 py-2 flex items-center gap-1.5"
-                  style={{ background: 'var(--c-primary)' }}
-                >
-                  <RotateCcw size={14} /> Try again
-                </button>
-              </div>
-            </div>
-          )}
-          {running && !error && (
-            <>
-              <div
-                className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[70%] h-[42%] rounded-[8px]"
-                style={{ border: '2px solid var(--c-accent)', boxShadow: '0 0 0 9999px rgba(0,0,0,0.4)' }}
-              />
-              <div
-                className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[70%] h-[2px]"
-                style={{ background: 'var(--c-accent)', animation: 'fadeIn 1.2s ease infinite alternate' }}
-              />
-              {flash && (
-                <div
-                  className="absolute inset-0 grid place-items-center"
-                  style={{ background: 'rgba(46,125,82,0.25)' }}
-                >
-                  <CheckCircle2 size={40} style={{ color: '#fff' }} className="anim-pop" />
-                </div>
-              )}
-            </>
-          )}
-        </div>
-
-        {errorKind === 'denied' && (
-          <div
-            className="text-[11px] px-3 py-2.5 rounded-[8px] mb-3 leading-relaxed"
-            style={{ background: 'var(--c-danger-soft)', color: 'var(--c-danger)' }}
-          >
-            <b>Camera blocked.</b> Click the camera icon in your browser's address bar, allow access,
-            then click "Try again". The browser will remember your choice for next time.
-          </div>
-        )}
-
-        <p className="text-[11px] text-center mb-3" style={{ color: 'var(--c-muted)' }}>
-          {running
-            ? 'Point the camera at a barcode — it scans automatically. Keep scanning to add more items.'
-            : 'Camera unavailable? Enter the barcode manually below.'}
-        </p>
-
-        <div className="flex gap-2">
-          <input
-            value={manual}
-            onChange={(e) => setManual(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && manual.trim()) {
-                onManual(manual.trim());
-                setManual('');
-              }
-            }}
-            placeholder="Type barcode & press Enter"
-            className="flex-1 py-2.5 px-3 rounded-[8px] border border-[var(--c-line)] bg-[var(--c-paper)] text-[12px]"
-            style={{ color: 'var(--c-ink)' }}
-            autoFocus={!!error}
-          />
-          <button
-            onClick={() => {
-              if (manual.trim()) {
-                onManual(manual.trim());
-                setManual('');
-              }
-            }}
-            className="text-white font-bold text-[12px] rounded-[8px] px-4"
-            style={{ background: 'var(--c-primary)' }}
-          >
-            Add
-          </button>
-        </div>
-      </div>
-    </div>
   );
 }
