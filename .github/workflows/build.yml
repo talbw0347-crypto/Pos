@@ -1,21 +1,16 @@
-name: Build Zaki's Market POS (Windows EXE)
+name: Build and Release Windows EXE
 
 on:
   push:
-    branches: [main, master]
-    paths:
-      - 'electron/**'
-      - '.github/workflows/build.yml'
-    tags:
-      - 'v*'
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  build-windows:
-    name: Build Windows EXE
+  build-and-release:
+    name: Build Windows EXE and publish release
     runs-on: windows-latest
 
     steps:
@@ -26,14 +21,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: electron/package.json
 
       - name: Install dependencies
         working-directory: electron
         run: npm install
 
-      - name: Build Windows EXE (NSIS installer + portable)
+      - name: Build Windows EXE (installer + portable)
         working-directory: electron
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -47,11 +40,15 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Attach EXE to release (on tag)
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: Zaki's Market POS v1.0.${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
           files: electron/release/*.exe
+          fail_on_unmatched_files: true
           generate_release_notes: true
+          make_latest: true
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
